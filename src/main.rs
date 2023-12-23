@@ -1,4 +1,8 @@
 mod app;
+mod wifi;
+
+#[cfg(test)]
+mod tests;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {

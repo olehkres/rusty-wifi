@@ -1,5 +1,4 @@
-use std::process::Command;
-use std::str;
+use std::{fmt, process::Command, str};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct WiFi {
@@ -116,21 +115,31 @@ impl WiFi {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn wifi_parser_test() {
-        // let raw = "SSID:Test\nCHAN:4\nSIGNAL:90\nBSSID:82\\:45\\:58\\:31\\:B1\\:64";
-        // let wifi = &parse_nmcli(raw)[0];
-        // assert_eq!(
-        //     wifi,
-        //     &WiFi {
-        //         ssid: "Test".to_string(),
-        //         bssid: "82:45:58:31:B1:64".to_string(),
-        //         channel: 4,
-        //         signal: 90,
-        //         bandwidth: 20
-        //     }
-        // );
+#[derive(Default)]
+pub enum Band {
+    #[default]
+    G2,
+    G5,
+}
+
+impl Band {
+    pub fn toggle(&mut self) {
+        match self {
+            Band::G2 => *self = Band::G5,
+            Band::G5 => *self = Band::G2,
+        }
+    }
+}
+
+impl fmt::Display for Band {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Band::G2 => {
+                write!(f, "2 GHz")
+            }
+            Band::G5 => {
+                write!(f, "5 GHz")
+            }
+        }
     }
 }
