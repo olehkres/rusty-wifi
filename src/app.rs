@@ -1,38 +1,7 @@
-use std::fmt;
-
 use eframe::egui::{self, Button};
 use egui_plot::{Line, Plot, PlotBounds};
 
-use rusty_wifi::WiFi;
-
-#[derive(Default)]
-pub enum Band {
-    #[default]
-    G2,
-    G5,
-}
-
-impl Band {
-    pub fn toggle(&mut self) {
-        match self {
-            Band::G2 => *self = Band::G5,
-            Band::G5 => *self = Band::G2,
-        }
-    }
-}
-
-impl fmt::Display for Band {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Band::G2 => {
-                write!(f, "2 GHz")
-            }
-            Band::G5 => {
-                write!(f, "5 GHz")
-            }
-        }
-    }
-}
+use crate::wifi::{Band, WiFi};
 
 #[derive(Default)]
 pub struct App {
