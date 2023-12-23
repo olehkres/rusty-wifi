@@ -1,0 +1,16 @@
+[package]
+name = "rusty-wifi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# nm = { git = "https://github.com/balena-io-modules/libnm-rs.git" }
+# tokio = { version = "1", features = ["full"] }
+# zbus = { version = "3", default-features = false, features = ["tokio"] }
+# networkmanager = "0.4"
+# dbus = "0.9"
+eframe = "0.24.1"
+egui_plot = "0.24.1"
+zbus = "3.14.1"
