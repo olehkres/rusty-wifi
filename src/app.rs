@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+use std::thread;
+
 use eframe::egui::{self, Button};
 use egui_plot::{Line, Plot, PlotBounds};
 
@@ -5,7 +8,7 @@ use crate::wifi::{Band, WiFi};
 
 #[derive(Default)]
 pub struct App {
-    wifis: Vec<(WiFi, Vec<[f64; 2]>)>,
+    wifis: Arc<Mutex<Vec<(WiFi, Vec<[f64; 2]>)>>>,
     band: Band,
     zoom: bool,
 }
@@ -28,13 +31,18 @@ impl App {
     }
 
     fn rescan(&mut self) {
-        self.wifis = WiFi::scan()
-            .into_iter()
-            .map(|w| {
-                let wifi_points = App::wifi_points(&w);
-                (w, wifi_points)
-            })
-            .collect();
+        let wifis = Arc::clone(&self.wifis);
+        thread::spawn(move || {
+            let scan = WiFi::scan()
+                .into_iter()
+                .map(|w| {
+                    let wifi_points = App::wifi_points(&w);
+                    (w, wifi_points)
+                })
+                .collect();
+            let mut wifi = wifis.lock().unwrap();
+            *wifi = scan;
+        });
     }
 
     pub fn new() -> Self {
@@ -49,15 +57,17 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let band_button = ui.add_enabled(!self.zoom, Button::new(format!("{}", self.band)));
-            if band_button.clicked() {
-                self.band.toggle();
-            }
-            ui.toggle_value(&mut self.zoom, "Zoom");
-            let rescan_button = ui.add(Button::new("Rescan"));
-            if rescan_button.clicked() {
-                self.rescan();
-            }
+            ui.horizontal(|ui| {
+                let band_button = ui.add_enabled(!self.zoom, Button::new(format!("{}", self.band)));
+                if band_button.clicked() {
+                    self.band.toggle();
+                }
+                ui.toggle_value(&mut self.zoom, "Zoom");
+                let rescan_button = ui.add(Button::new("Rescan"));
+                if rescan_button.clicked() {
+                    self.rescan();
+                }
+            });
 
             let plot = Plot::new("wifi_plot")
                 .allow_zoom(self.zoom)
@@ -77,7 +87,7 @@ impl eframe::App for App {
                     plot_ui.set_plot_bounds(bounds);
                 }
 
-                for (wifi, points) in self.wifis.iter() {
+                for (wifi, points) in self.wifis.lock().unwrap().iter() {
                     plot_ui.line(Line::new(points.clone()).name(format!(
                         "SSID: {}\n\
                         BSSID: {}",
