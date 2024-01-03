@@ -1,10 +1,12 @@
 mod app;
+mod error;
 mod wifi;
 
 #[cfg(test)]
 mod tests;
 
-fn main() -> Result<(), eframe::Error> {
+#[tokio::main]
+async fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         ..Default::default()
     };

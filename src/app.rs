@@ -1,101 +1,115 @@
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::fs::File;
+use std::io::{BufReader, Write};
 
-use eframe::egui::{self, Button};
-use egui_plot::{Line, Plot, PlotBounds};
+use std::sync::Arc;
 
-use crate::wifi::{Band, WiFi};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
-#[derive(Default)]
+use native_dialog::FileDialog;
+
+use crate::error::AppError;
+use crate::wifi::{AccessPoint, Band};
+
+mod back;
+mod front;
+
+use self::back::AccessPointGUI;
+
 pub struct App {
-    wifis: Arc<Mutex<Vec<(WiFi, Vec<[f64; 2]>)>>>,
+    aps: Arc<Mutex<Vec<AccessPointGUI>>>,
     band: Band,
     zoom: bool,
+    scan_task: JoinHandle<()>,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            aps: Arc::new(Mutex::new(vec![])),
+            band: Band::G2,
+            zoom: false,
+            scan_task: tokio::spawn(async {}),
+        }
+    }
 }
 
 impl App {
-    fn wifi_points(w: &WiFi) -> Vec<[f64; 2]> {
-        let start = (w.channel() - w.bandwidth() / 20) * 30;
-        let end = (w.channel() + w.bandwidth() / 20) * 30;
-
-        (start..=end)
-            .map(|x| {
-                let x = x as f64 / 30.0;
-                let a = *w.bandwidth() as f64 * -0.05;
-                let b = *w.signal() as f64 / 10.0;
-                let c = *w.channel() as f64;
-                let y: f64 = a * b * ((x - c) * (x - c)) + b;
-                [x, y]
-            })
-            .collect::<Vec<[f64; 2]>>()
+    /// Creates a new [`App`] instance.
+    pub fn new() -> Self {
+        App {
+            aps: Arc::new(Mutex::new(AccessPointGUI::scan())),
+            ..Default::default()
+        }
     }
 
+    /// Calls scan function of WiFi API and updates Access Points on [`App`].
+    /// Note: this replaces previosly scaned Access Points with the new one without saving.
     fn rescan(&mut self) {
-        let wifis = Arc::clone(&self.wifis);
-        thread::spawn(move || {
-            let scan = WiFi::scan()
-                .into_iter()
-                .map(|w| {
-                    let wifi_points = App::wifi_points(&w);
-                    (w, wifi_points)
-                })
-                .collect();
-            let mut wifi = wifis.lock().unwrap();
-            *wifi = scan;
+        if !self.scan_task.is_finished() {
+            return;
+        }
+
+        let wifis = Arc::clone(&self.aps);
+        self.scan_task = tokio::spawn(async move {
+            let scan = AccessPointGUI::scan();
+            let mut aps_lock = wifis.lock().await;
+            *aps_lock = scan;
         });
     }
 
-    pub fn new() -> Self {
-        let mut app = App {
-            ..Default::default()
-        };
-        app.rescan();
-        app
+    /// Opens native file dialog to select json formatted Access Points list.
+    fn open_file(&mut self) {
+        let aps_p = Arc::clone(&self.aps);
+
+        tokio::spawn(async move {
+            let file_join = tokio::spawn(async move {
+                FileDialog::new()
+                    .add_filter("json", &["json"])
+                    .set_location("~")
+                    .show_open_single_file()
+            });
+
+            if let Some(path) = file_join.await?? {
+                let file = File::open(path)?;
+                let reader = BufReader::new(file);
+                let aps: Vec<AccessPoint> = serde_json::from_reader(reader)?;
+                let aps: Vec<AccessPointGUI> = aps.into_iter().map(AccessPointGUI::new).collect();
+                let mut aps_lock = aps_p.lock().await;
+                *aps_lock = aps;
+            };
+
+            Result::<(), AppError>::Ok(())
+        });
     }
-}
 
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let band_button = ui.add_enabled(!self.zoom, Button::new(format!("{}", self.band)));
-                if band_button.clicked() {
-                    self.band.toggle();
-                }
-                ui.toggle_value(&mut self.zoom, "Zoom");
-                let rescan_button = ui.add(Button::new("Rescan"));
-                if rescan_button.clicked() {
-                    self.rescan();
-                }
+    /// Opens native file dialog to select path and name for file
+    /// of json formatted Access Points list.
+    fn save_file(&self) {
+        let wifis = Arc::clone(&self.aps);
+
+        tokio::spawn(async move {
+            let file_join = tokio::spawn(async move {
+                FileDialog::new()
+                    .add_filter("json", &["json"])
+                    .set_location("~")
+                    .show_save_single_file()
             });
 
-            let plot = Plot::new("wifi_plot")
-                .allow_zoom(self.zoom)
-                .allow_scroll(false)
-                .allow_drag(false);
-
-            plot.show(ui, |plot_ui| {
-                // Show only 2GHz bounds.
-                let bounds = match self.band {
-                    // Plot for 2 GHZ
-                    Band::G2 => PlotBounds::from_min_max([0.0, 0.0], [17.0, 11.0]),
-                    // Plot for 5 GHZ
-                    Band::G5 => PlotBounds::from_min_max([32.0, 0.0], [177.0, 11.0]),
-                };
-
-                if !self.zoom {
-                    plot_ui.set_plot_bounds(bounds);
-                }
-
-                for (wifi, points) in self.wifis.lock().unwrap().iter() {
-                    plot_ui.line(Line::new(points.clone()).name(format!(
-                        "SSID: {}\n\
-                        BSSID: {}",
-                        wifi.ssid().clone(),
-                        wifi.bssid()
-                    )));
-                }
+            let serder_aps = tokio::spawn(async move {
+                let lock = wifis.lock().await;
+                let aps: Vec<&AccessPoint> = lock.iter().map(|w| w.raw()).collect();
+                Result::<Vec<u8>, AppError>::Ok(serde_json::to_vec(&aps)?)
             });
+
+            let path = file_join.await??;
+
+            if let Some(path) = path {
+                let mut file = File::create(path)?;
+                file.write_all(&serder_aps.await??)?;
+            };
+
+            Result::<(), AppError>::Ok(())
         });
     }
 }

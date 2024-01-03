@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::{fmt, process::Command, str};
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct WiFi {
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct AccessPoint {
     ssid: String,
     bssid: String,
     bandwidth: i32,
@@ -9,13 +10,13 @@ pub struct WiFi {
     signal: i32,
 }
 
-impl Default for WiFi {
+impl Default for AccessPoint {
     fn default() -> Self {
-        WiFi::new(&"Default", &"FF:FF:FF:FF:FF:FF", 20, 0, 0)
+        AccessPoint::new(&"Default", &"FF:FF:FF:FF:FF:FF", 20, 0, 0)
     }
 }
 
-impl WiFi {
+impl AccessPoint {
     pub fn new(
         ssid: &impl ToString,
         bssid: &impl ToString,
@@ -23,7 +24,7 @@ impl WiFi {
         channel: i32,
         signal: i32,
     ) -> Self {
-        WiFi {
+        AccessPoint {
             ssid: ssid.to_string(),
             bssid: bssid.to_string(),
             bandwidth,
@@ -68,13 +69,13 @@ impl WiFi {
             .unwrap();
         let nmcli_raw = str::from_utf8(&nmcli_raw.stdout).unwrap();
 
-        return Self::parse_nmcli(&nmcli_raw, 4);
+        Self::parse_nmcli(nmcli_raw, 4)
     }
 
-    fn parse_nmcli(input: &str, params_count: i32) -> Vec<WiFi> {
+    fn parse_nmcli(input: &str, params_count: i32) -> Vec<AccessPoint> {
         let input = input.replace("\\:", ":");
 
-        let mut current = WiFi {
+        let mut current = AccessPoint {
             ..Default::default()
         };
         let mut wifis = vec![];
@@ -86,7 +87,7 @@ impl WiFi {
             if i > params_count - 1 {
                 // push current wifi to vec and create new to complete.
                 wifis.push(current);
-                current = WiFi {
+                current = AccessPoint {
                     ..Default::default()
                 };
                 i = 0;
@@ -111,7 +112,8 @@ impl WiFi {
                 eprintln!("Cant find param in line: {l}")
             };
         }
-        return wifis;
+
+        wifis
     }
 }
 
