@@ -4,6 +4,8 @@ jobs:
   clippy_check:
     runs-on: ubuntu-latest
     steps:
+      - run: sudo apt upgrade
+      - run: sudo apt-get -y install libssh-dev
       - uses: actions/checkout@v1
       - run: rustup component add clippy
       - uses: actions-rs/clippy-check@v1
