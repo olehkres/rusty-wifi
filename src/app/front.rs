@@ -28,10 +28,10 @@ impl App {
                 self.rescan();
             }
             if ui.button("Save").clicked() {
-                self.save_file();
+                self.save_file_spawn();
             }
             if ui.button("Open").clicked() {
-                self.open_file();
+                self.open_file_spawn();
             }
         });
     }
